@@ -16,14 +16,14 @@ class Watchlist(Static):
         config = load_config()
         history = config.get("history", [])
         pinned = config.get("pinned", [])
-        
+
         # Update header with count
         header = self.query_one("#watchlist-header", Label)
         header.update(f"WATCHLIST ({len(history)})")
-        
+
         list_view = self.query_one("#watchlist-list", ListView)
         list_view.clear()
-        
+
         # history is the canonical order, we just visually show pinned items
         # Let's ensure items are drawn from newest/top to oldest/bottom
         for symbol in reversed(history):
@@ -34,7 +34,7 @@ class Watchlist(Static):
             if is_pinned:
                 label.styles.color = "cyan"
                 label.styles.text_style = "bold"
-            
+
             item = ListItem(label)
             item.ticker_symbol = symbol
             item.is_pinned = is_pinned
@@ -109,14 +109,14 @@ class Watchlist(Static):
                     config = load_config()
                     history = config.get("history", [])
                     pinned = config.get("pinned", [])
-                    
+
                     if symbol in pinned:
                         # Unpin
                         pinned.remove(symbol)
                         # Move to top of unpinned section
                         if symbol in history:
                             history.remove(symbol)
-                        
+
                         first_pinned_idx = 0
                         for i, s in enumerate(history):
                             if s in pinned:
@@ -124,21 +124,21 @@ class Watchlist(Static):
                                 break
                         else:
                             first_pinned_idx = len(history)
-                        
+
                         history.insert(first_pinned_idx, symbol)
                     else:
                         # Pin
                         pinned.append(symbol)
                         if symbol in history:
                             history.remove(symbol)
-                        
+
                         first_pinned_idx = len(history)
                         for i, s in enumerate(history):
                             if s in pinned:
                                 first_pinned_idx = i
                                 break
                         history.insert(first_pinned_idx, symbol)
-                    
+
                     save_config({"history": history, "pinned": pinned})
                     self.refresh_list()
                     # Keep index if possible

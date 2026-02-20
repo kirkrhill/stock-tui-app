@@ -60,14 +60,14 @@ class StockTuiApp(App):
 
     StockChart {
         width: 100%;
-        height: 1fr; 
+        height: 1fr;
         border: solid green;
         overflow: hidden;
         content-align: left top;
         padding: 0;
         margin: 0;
     }
-    
+
     Input {
         margin: 0 1;
         width: 40;
@@ -111,7 +111,7 @@ class StockTuiApp(App):
     def on_mount(self):
         config = load_config()
         self.history = config.get("history", [])
-        
+
         chart = self.query_one("#chart", StockChart)
         chart.update(
             Text(
@@ -142,7 +142,7 @@ class StockTuiApp(App):
                 await asyncio.sleep(timeout)
                 if str(notification_label.renderable) == message:
                     notification_label.update("")
-            
+
             asyncio.create_task(clear_message())
         except Exception as e:
             logging.error(f"Notification failed: {e}")

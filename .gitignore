@@ -1,13 +1,37 @@
+# Python
 venv/
 .venv/
 __pycache__/
 *.py[cod]
 *$py.class
 .env
-.DS_Store
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Local configuration and logs
 *.log
-*.svg
-Screenshot*.png
-output.txt
-stock_tui/venv/
+stock_tui.log
 stock_tui/current_chart.png
+.stock_tui_config.json
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Output / Temp
+output.txt
+Screenshot*.png
+*.svg
+dist/
+build/
+*.egg-info/
