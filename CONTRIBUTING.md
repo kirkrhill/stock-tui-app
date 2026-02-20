@@ -16,7 +16,7 @@ Once the issue is discussed and approved, feel free to submit a Pull Request!
 ### 1. Fork and Clone
 Fork the repository on GitHub and clone your fork locally:
 ```bash
-git clone https://github.com/your-username/stock-tui.git
+git clone https://github.com/kirkrhill/stock-tui.git
 cd stock-tui
 ```
 
