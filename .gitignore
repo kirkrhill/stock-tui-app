@@ -1,0 +1,13 @@
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.DS_Store
+*.log
+*.svg
+Screenshot*.png
+output.txt
+stock_tui/venv/
+stock_tui/current_chart.png
