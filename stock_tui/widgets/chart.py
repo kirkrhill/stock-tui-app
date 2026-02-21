@@ -2,6 +2,7 @@ import base64
 import os
 import logging
 import asyncio
+import time
 import matplotlib
 # Force non-interactive backend immediately
 matplotlib.use("Agg")
@@ -11,6 +12,7 @@ import pandas as pd
 import plotext as plt
 from rich.segment import Segment
 from rich.text import Text
+from rich.console import Group
 from textual.widgets import Static
 from textual.reactive import reactive
 
@@ -27,34 +29,42 @@ class ImageRenderable:
         protocol_code: str,
         height: int,
         caption: str = "",
-        clear_code: str = "",
     ):
         self.protocol_code = protocol_code
         self.height = height
         self.caption = caption
-        self.clear_code = clear_code
 
     def __rich_console__(self, console, options):
-        if self.clear_code:
-            yield ZeroWidthSegment(self.clear_code)
+        # We don't clear here to avoid flickering during Textual's frequent repaints
+        # The terminal protocol with a=T and a specific ID handles replacement.
+
+        # 1. Emit the escape sequence
         yield ZeroWidthSegment(self.protocol_code)
+
+
         if self.caption:
             yield Segment(f" {self.caption}\n")
             start = 1
         else:
             start = 0
+
+        # 2. Emit newlines to reserve space
         for i in range(start, self.height):
             if i < self.height - 1:
                 yield Segment("\n")
             else:
                 yield Segment(" ")
 
+class ClearGraphics:
+    """A simple renderable that clears all terminal images."""
+    def __rich_console__(self, console, options):
+        yield ZeroWidthSegment("\x1b_Ga=d,d=a,q=2\x1b\\")
+
 class StockChart(Static):
     """
     A widget to display the stock chart.
     Supports both text (block) and image (Kitty/iTerm) rendering.
     """
-    show_image = reactive(True)
     symbol = reactive("")
     render_mode = reactive("image")
 
@@ -62,6 +72,10 @@ class StockChart(Static):
         self.chart_data = None
         self._temp_file = None
         super().__init__(**kwargs)
+
+    def on_mount(self):
+        if self.chart_data is not None:
+            self.trigger_render()
 
     def get_chart_height(self):
         if self.content_size.height > 0:
@@ -74,11 +88,21 @@ class StockChart(Static):
     def update_data(self, df, symbol):
         self.chart_data = df
         self.symbol = symbol
+        # Explicitly trigger render
+        self.trigger_render()
 
     def set_mode(self, mode):
         self.render_mode = mode
 
     def trigger_render(self):
+        # Clear existing graphics immediately if we have a console
+        try:
+            if self.app and hasattr(self.app, "console"):
+                self.app.console.file.write("\x1b_Ga=d,d=a,q=2\x1b\\")
+                self.app.console.file.flush()
+        except:
+            pass
+
         self.update(Text("Rendering...", style="italic grey50"))
         self.run_worker(self.generate_render(), exclusive=True)
 
@@ -86,9 +110,6 @@ class StockChart(Static):
         self.trigger_render()
 
     def watch_render_mode(self, mode):
-        self.trigger_render()
-
-    def watch_show_image(self, show):
         self.trigger_render()
 
     async def generate_render(self):
@@ -99,14 +120,17 @@ class StockChart(Static):
                 else:
                     ansi_text = await asyncio.to_thread(self._get_block_ansi)
                     new_renderable = Text.from_ansi(ansi_text)
-            elif self.render_mode == "debug":
-                new_renderable = await asyncio.to_thread(self._get_debug_renderable)
+
+                # Always clear graphics when in block mode
+                self.update(Group(ClearGraphics(), new_renderable))
             else:
                 if self.chart_data is None:
-                    new_renderable = Text("No data loaded. Enter a ticker first.")
+                    # Clear graphics when no data is loaded
+                    self.update(Group(ClearGraphics(), Text("No data loaded. Enter a ticker first.")))
                 else:
+                    self.app.notify(f"Generating image for {self.symbol}...")
                     new_renderable = await asyncio.to_thread(self._get_image_renderable)
-            self.update(new_renderable)
+                    self.update(new_renderable)
         except Exception as e:
             logging.exception("Render failed")
             self.update(Text(f"Render failed: {e}"))
@@ -114,21 +138,19 @@ class StockChart(Static):
     def _get_block_ansi(self):
         plt.clear_figure()
         plt.theme("dark")
+        # plotext.candlestick expects: dates, {Open, High, Low, Close}
         subset = self.chart_data.tail(60)
         dates = subset.index.strftime("%d/%m/%Y").tolist()
         plt.date_form("d/m/Y")
-        plt.candlestick(dates, subset.to_dict("list"))
+        plt.candlestick(dates, {
+            "Open": subset["Open"].tolist(),
+            "High": subset["High"].tolist(),
+            "Low": subset["Low"].tolist(),
+            "Close": subset["Close"].tolist(),
+        })
         plt.title(f"{self.symbol} - Daily (Last 60 Days)")
         plt.plotsize(100, self.get_chart_height())
         return plt.build()
-
-    def _get_debug_renderable(self):
-        path = os.path.abspath("stock_tui/test_image.png")
-        if not os.path.exists(path):
-            path = os.path.abspath("test_image.png")
-        if os.path.exists(path):
-            return self._create_image_renderable(path, caption="DEBUG: 100x100 WHITE SQUARE")
-        return Text("Debug image (test_image.png) not found.")
 
     def _get_image_renderable(self):
         path = os.path.abspath("stock_tui/current_chart.png")
@@ -157,20 +179,16 @@ class StockChart(Static):
         if "kitty" in os.environ.get("TERM", "").lower(): term_program = "kitty"
         protocol = os.environ.get("GRAPHICS_PROTOCOL", "").lower()
         reserve_height = self.get_chart_height()
-        clear_code = ""
-        if "iTerm" in term_program or protocol == "iterm":
-            with open(abs_path, "rb") as f:
-                b64_content = base64.b64encode(f.read()).decode("ascii")
-            code = f"\x1b]1337;File=inline=1;width=auto;height=auto:{b64_content}\a"
-            return ImageRenderable(code, reserve_height, caption=caption)
-        else:
-            clear_code = "\x1b_Ga=d,d=a,q=2\x1b\\"
-            display_c = width if width else ""
-            display_r = height if height else ""
-            if not self.show_image:
-                return ImageRenderable("", reserve_height, caption=caption + " (IMAGE HIDDEN)", clear_code=clear_code)
-            code = f"\x1b_Gf=100,a=T,t=f,i=1,q=2,c={display_c},r={display_r};{b64_path}\x1b\\"
-            return ImageRenderable(code, reserve_height, caption=caption, clear_code=clear_code)
+
+        display_c = width if width else ""
+        display_r = height if height else ""
+
+        # a=T (Transmit & Display), f=100 (PNG), t=f (File path)
+        # q=2 (Quiet mode)
+        img_id = int(time.time() * 1000) % 10000 + 1
+        code = f"\x1b_Gf=100,a=T,t=f,i={img_id},q=2,c={display_c},r={display_r};{b64_path}\x1b\\"
+
+        return ImageRenderable(code, reserve_height, caption=caption)
 
     def on_unmount(self):
         if self._temp_file and os.path.exists(self._temp_file):

@@ -6,7 +6,6 @@ class Watchlist(Static):
     """A widget to display and manage the stock ticker history."""
 
     def compose(self):
-        yield Label("WATCHLIST", id="watchlist-header")
         yield ListView(id="watchlist-list")
 
     def on_mount(self):
@@ -17,9 +16,7 @@ class Watchlist(Static):
         history = config.get("history", [])
         pinned = config.get("pinned", [])
 
-        # Update header with count
-        header = self.query_one("#watchlist-header", Label)
-        header.update(f"WATCHLIST ({len(history)})")
+        # We can update the Tab label if we wanted to, but for now let's just keep the list
 
         list_view = self.query_one("#watchlist-list", ListView)
         list_view.clear()
