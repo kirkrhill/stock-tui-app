@@ -12,6 +12,7 @@ import pandas as pd
 import plotext as plt
 from rich.segment import Segment
 from rich.text import Text
+from rich.console import Group
 from textual.widgets import Static
 from textual.reactive import reactive
 
@@ -54,6 +55,11 @@ class ImageRenderable:
             else:
                 yield Segment(" ")
 
+class ClearGraphics:
+    """A simple renderable that clears all terminal images."""
+    def __rich_console__(self, console, options):
+        yield ZeroWidthSegment("\x1b_Ga=d,d=a,q=2\x1b\\")
+
 class StockChart(Static):
     """
     A widget to display the stock chart.
@@ -89,6 +95,14 @@ class StockChart(Static):
         self.render_mode = mode
 
     def trigger_render(self):
+        # Clear existing graphics immediately if we have a console
+        try:
+            if self.app and hasattr(self.app, "console"):
+                self.app.console.file.write("\x1b_Ga=d,d=a,q=2\x1b\\")
+                self.app.console.file.flush()
+        except:
+            pass
+
         self.update(Text("Rendering...", style="italic grey50"))
         self.run_worker(self.generate_render(), exclusive=True)
 
@@ -106,15 +120,20 @@ class StockChart(Static):
                 else:
                     ansi_text = await asyncio.to_thread(self._get_block_ansi)
                     new_renderable = Text.from_ansi(ansi_text)
+
+                # Always clear graphics when in block mode
+                self.update(Group(ClearGraphics(), new_renderable))
             elif self.render_mode == "debug":
                 new_renderable = await asyncio.to_thread(self._get_debug_renderable)
+                self.update(new_renderable)
             else:
                 if self.chart_data is None:
-                    new_renderable = Text("No data loaded. Enter a ticker first.")
+                    # Clear graphics when no data is loaded
+                    self.update(Group(ClearGraphics(), Text("No data loaded. Enter a ticker first.")))
                 else:
                     self.app.notify(f"Generating image for {self.symbol}...")
                     new_renderable = await asyncio.to_thread(self._get_image_renderable)
-            self.update(new_renderable)
+                    self.update(new_renderable)
         except Exception as e:
             logging.exception("Render failed")
             self.update(Text(f"Render failed: {e}"))
@@ -122,10 +141,16 @@ class StockChart(Static):
     def _get_block_ansi(self):
         plt.clear_figure()
         plt.theme("dark")
+        # plotext.candlestick expects: dates, {Open, High, Low, Close}
         subset = self.chart_data.tail(60)
         dates = subset.index.strftime("%d/%m/%Y").tolist()
         plt.date_form("d/m/Y")
-        plt.candlestick(dates, subset.to_dict("list"))
+        plt.candlestick(dates, {
+            "Open": subset["Open"].tolist(),
+            "High": subset["High"].tolist(),
+            "Low": subset["Low"].tolist(),
+            "Close": subset["Close"].tolist(),
+        })
         plt.title(f"{self.symbol} - Daily (Last 60 Days)")
         plt.plotsize(100, self.get_chart_height())
         return plt.build()

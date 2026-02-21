@@ -146,9 +146,15 @@ class StockTuiApp(App):
                 yield StockChart(id="chart")
         yield Footer()
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._thread_id = None
+
     def on_mount(self):
+        self._thread_id = threading.get_ident()
         config = load_config()
         self.history = config.get("history", [])
+
 
         chart = self.query_one("#chart", StockChart)
         chart.update(
@@ -193,21 +199,30 @@ class StockTuiApp(App):
                 logging.error(f"Notification UI update failed: {e}")
 
         # Check if we are running in the main thread (event loop thread)
-        if self._thread_id == threading.get_ident():
+        if self._thread_id and self._thread_id == threading.get_ident():
             update_ui()
         else:
             self.call_from_thread(update_ui)
 
 
     def action_toggle_block(self):
+        # Explicitly clear terminal graphics when moving to block mode
+        self.console.file.write("\x1b_Ga=d,d=a,q=2\x1b\\")
+        self.console.file.flush()
         self.query_one("#chart", StockChart).set_mode("block")
         self.notify("Switched to Block Mode")
 
     def action_toggle_image(self):
+        # Explicitly clear terminal graphics before moving to image mode
+        self.console.file.write("\x1b_Ga=d,d=a,q=2\x1b\\")
+        self.console.file.flush()
         self.query_one("#chart", StockChart).set_mode("image")
         self.notify("Switched to Image Mode")
 
     def action_toggle_debug(self):
+        # Explicitly clear terminal graphics
+        self.console.file.write("\x1b_Ga=d,d=a,q=2\x1b\\")
+        self.console.file.flush()
         self.query_one("#chart", StockChart).set_mode("debug")
         self.notify("Running Graphics Test...")
 
