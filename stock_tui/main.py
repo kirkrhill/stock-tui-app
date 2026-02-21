@@ -65,6 +65,7 @@ class StockTuiApp(App):
 
     #info-container {
         padding: 1;
+        width: 100%;
     }
 
     #company-name {
@@ -88,6 +89,8 @@ class StockTuiApp(App):
 
     #company-description {
         height: auto;
+        width: 100%;
+        content-align: left top;
     }
 
     StockChart {
