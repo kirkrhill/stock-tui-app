@@ -59,7 +59,6 @@ class StockChart(Static):
     A widget to display the stock chart.
     Supports both text (block) and image (Kitty/iTerm) rendering.
     """
-    show_image = reactive(True)
     symbol = reactive("")
     render_mode = reactive("image")
 
@@ -97,9 +96,6 @@ class StockChart(Static):
         self.trigger_render()
 
     def watch_render_mode(self, mode):
-        self.trigger_render()
-
-    def watch_show_image(self, show):
         self.trigger_render()
 
     async def generate_render(self):
@@ -169,9 +165,6 @@ class StockChart(Static):
         if "kitty" in os.environ.get("TERM", "").lower(): term_program = "kitty"
         protocol = os.environ.get("GRAPHICS_PROTOCOL", "").lower()
         reserve_height = self.get_chart_height()
-
-        if not self.show_image:
-            return ImageRenderable("", reserve_height, caption=caption + " (IMAGE HIDDEN)")
 
         display_c = width if width else ""
         display_r = height if height else ""

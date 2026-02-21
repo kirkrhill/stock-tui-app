@@ -128,7 +128,6 @@ class StockTuiApp(App):
         ("ctrl+b", "toggle_block", "Block Mode"),
         ("ctrl+h", "toggle_image", "Image Mode"),
         ("ctrl+t", "toggle_debug", "Test Graphics"),
-        ("ctrl+g", "toggle_show_image", "Hide/Show Image"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -159,8 +158,7 @@ class StockTuiApp(App):
                 " - ENTER: Fetch data\n"
                 " - CTRL+B: Switch to Block (Text) Mode\n"
                 " - CTRL+H: Switch to Image (High-Res) Mode\n"
-                " - CTRL+T: Test Terminal Graphics Support\n"
-                " - CTRL+G: Toggle High-Res Image Visibility"
+                " - CTRL+T: Test Terminal Graphics Support"
             )
         )
 
@@ -212,12 +210,6 @@ class StockTuiApp(App):
     def action_toggle_debug(self):
         self.query_one("#chart", StockChart).set_mode("debug")
         self.notify("Running Graphics Test...")
-
-    def action_toggle_show_image(self):
-        chart = self.query_one("#chart", StockChart)
-        chart.show_image = not chart.show_image
-        status = "Shown" if chart.show_image else "Hidden"
-        self.notify(f"High-Res Image {status}")
 
     @work(exclusive=True, thread=True)
     def fetch_stock_data(self, symbol: str):
@@ -315,10 +307,6 @@ class StockTuiApp(App):
             input_widget.value = new_symbol
             input_widget.cursor_position = len(new_symbol)
             self.fetch_stock_data(new_symbol)
-            event.prevent_default()
-            event.stop()
-        elif event.key == "ctrl+g":
-            self.action_toggle_show_image()
             event.prevent_default()
             event.stop()
 
