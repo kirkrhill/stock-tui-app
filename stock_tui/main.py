@@ -127,7 +127,6 @@ class StockTuiApp(App):
     BINDINGS = [
         ("ctrl+b", "toggle_block", "Block Mode"),
         ("ctrl+h", "toggle_image", "Image Mode"),
-        ("ctrl+t", "toggle_debug", "Test Graphics"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -163,8 +162,7 @@ class StockTuiApp(App):
                 "Controls:\n"
                 " - ENTER: Fetch data\n"
                 " - CTRL+B: Switch to Block (Text) Mode\n"
-                " - CTRL+H: Switch to Image (High-Res) Mode\n"
-                " - CTRL+T: Test Terminal Graphics Support"
+                " - CTRL+H: Switch to Image (High-Res) Mode"
             )
         )
 
@@ -218,13 +216,6 @@ class StockTuiApp(App):
         self.console.file.flush()
         self.query_one("#chart", StockChart).set_mode("image")
         self.notify("Switched to Image Mode")
-
-    def action_toggle_debug(self):
-        # Explicitly clear terminal graphics
-        self.console.file.write("\x1b_Ga=d,d=a,q=2\x1b\\")
-        self.console.file.flush()
-        self.query_one("#chart", StockChart).set_mode("debug")
-        self.notify("Running Graphics Test...")
 
     @work(exclusive=True, thread=True)
     def fetch_stock_data(self, symbol: str):

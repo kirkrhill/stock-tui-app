@@ -123,9 +123,6 @@ class StockChart(Static):
 
                 # Always clear graphics when in block mode
                 self.update(Group(ClearGraphics(), new_renderable))
-            elif self.render_mode == "debug":
-                new_renderable = await asyncio.to_thread(self._get_debug_renderable)
-                self.update(new_renderable)
             else:
                 if self.chart_data is None:
                     # Clear graphics when no data is loaded
@@ -154,14 +151,6 @@ class StockChart(Static):
         plt.title(f"{self.symbol} - Daily (Last 60 Days)")
         plt.plotsize(100, self.get_chart_height())
         return plt.build()
-
-    def _get_debug_renderable(self):
-        path = os.path.abspath("stock_tui/test_image.png")
-        if not os.path.exists(path):
-            path = os.path.abspath("test_image.png")
-        if os.path.exists(path):
-            return self._create_image_renderable(path, caption="DEBUG: 100x100 WHITE SQUARE")
-        return Text("Debug image (test_image.png) not found.")
 
     def _get_image_renderable(self):
         path = os.path.abspath("stock_tui/current_chart.png")
