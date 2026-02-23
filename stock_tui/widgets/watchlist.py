@@ -1,5 +1,6 @@
+import logging
 from textual import events
-from textual.widgets import Static, ListView, ListItem, Label
+from textual.widgets import Static, ListView, ListItem, Label, TabbedContent
 from utils import load_config, save_config
 
 class Watchlist(Static):
@@ -16,7 +17,13 @@ class Watchlist(Static):
         history = config.get("history", [])
         pinned = config.get("pinned", [])
 
-        # We can update the Tab label if we wanted to, but for now let's just keep the list
+        # Update Tab label in the parent TabbedContent
+        try:
+            tabbed_content = self.app.query_one(TabbedContent)
+            # tab-watchlist is the ID of the TabPane
+            tabbed_content.get_tab("tab-watchlist").label = f"Watchlist ({len(history)})"
+        except Exception as e:
+            logging.error(f"Failed to update watchlist tab label: {e}")
 
         list_view = self.query_one("#watchlist-list", ListView)
         list_view.clear()
