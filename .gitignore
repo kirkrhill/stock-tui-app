@@ -35,3 +35,5 @@ Screenshot*.png
 dist/
 build/
 *.egg-info/
+
+result-lib/
