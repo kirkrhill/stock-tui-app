@@ -1,5 +1,6 @@
 import base64
 import os
+import io
 import logging
 import asyncio
 import time
@@ -71,6 +72,7 @@ class StockChart(Static):
     def __init__(self, **kwargs):
         self.chart_data = None
         self._temp_file = None
+        self._last_shm = None
         super().__init__(**kwargs)
 
     def on_mount(self):
@@ -95,14 +97,8 @@ class StockChart(Static):
         self.render_mode = mode
 
     def trigger_render(self):
-        # Clear existing graphics immediately if we have a console
-        try:
-            if self.app and hasattr(self.app, "console"):
-                self.app.console.file.write("\x1b_Ga=d,d=a,q=2\x1b\\")
-                self.app.console.file.flush()
-        except:
-            pass
-
+        # We don't clear the console directly here to avoid race conditions with Textual
+        # The replacement will happen through the ID 'i=1' in the graphics protocol
         self.update(Text("Rendering...", style="italic grey50"))
         self.run_worker(self.generate_render(), exclusive=True)
 
@@ -153,7 +149,6 @@ class StockChart(Static):
         return plt.build()
 
     def _get_image_renderable(self):
-        path = os.path.abspath("stock_tui/current_chart.png")
         mc = mpf.make_marketcolors(up="#26a69a", down="#ef5350", edge="inherit", wick="inherit", volume="in")
         s = mpf.make_mpf_style(marketcolors=mc, base_mpf_style="nightclouds", gridstyle=":")
         try:
@@ -166,31 +161,66 @@ class StockChart(Static):
             width = (char_width * 0.12)
             height = (char_height * 0.25)
             x_limit = (0, len(df))
-            mpf.plot(df, type="candle", style=s, volume=True, savefig=dict(fname=path, format="png"), figsize=(width, height), tight_layout=True, xlim=x_limit)
-            return self._create_image_renderable(path, caption=f"GRAPHIC: {self.symbol} ({char_width}x{char_height})", width=char_width, height=char_height)
+
+            # Create image in memory instead of saving to file
+            img_buffer = io.BytesIO()
+            mpf.plot(df, type="candle", style=s, volume=True, savefig=dict(fname=img_buffer, format="png"), figsize=(width, height), tight_layout=True, xlim=x_limit)
+            img_buffer.seek(0)
+
+            # Log for debugging
+            # logging.debug(f"Generated image buffer size: {len(img_buffer.getvalue())}")
+
+            return self._create_image_renderable(img_buffer, caption=f"GRAPHIC: {self.symbol} ({char_width}x{char_height})", width=char_width, height=char_height)
         except Exception as e:
             logging.error(f"Image generation failed: {e}")
+            import traceback
+            traceback.print_exc()
             return Text(f"Error generating image: {e}")
 
-    def _create_image_renderable(self, path, caption="", width=None, height=None):
-        abs_path = os.path.abspath(path)
-        b64_path = base64.b64encode(abs_path.encode("utf-8")).decode("ascii")
-        term_program = os.environ.get("TERM_PROGRAM", "")
-        if "kitty" in os.environ.get("TERM", "").lower(): term_program = "kitty"
-        protocol = os.environ.get("GRAPHICS_PROTOCOL", "").lower()
-        reserve_height = self.get_chart_height()
+    def _create_image_renderable(self, img_buffer, caption="", width=None, height=None):
+        # Using t=f (local file) but storing it in /dev/shm for memory performance
+        img_data = img_buffer.getvalue()
 
+        # 1. Create a unique name for the temporary file in shared memory
+        shm_name = f"stock_tui_chart_{int(time.time() * 1000)}.png"
+        shm_path = f"/dev/shm/{shm_name}"
+
+        try:
+            # 2. Write the data to /dev/shm
+            with open(shm_path, "wb") as f:
+                f.write(img_data)
+
+            # 3. Base64 encode the full path for t=f
+            b64_path = base64.b64encode(shm_path.encode("ascii")).decode("ascii")
+
+            # Record this for cleanup fallback
+            self._last_shm_path = shm_path
+        except Exception as e:
+            logging.error(f"Failed to write to /dev/shm: {e}")
+            return Text(f"Image Storage Error: {e}")
+
+        reserve_height = self.get_chart_height()
         display_c = width if width else ""
         display_r = height if height else ""
 
-        # a=T (Transmit & Display), f=100 (PNG), t=f (File path)
-        # q=2 (Quiet mode)
+        # a=T: Transmit and display
+        # f=100: PNG
+        # t=f: Local file
+        # Use a unique ID for each new image to avoid race conditions with replacement
         img_id = int(time.time() * 1000) % 10000 + 1
-        code = f"\x1b_Gf=100,a=T,t=f,i={img_id},q=2,c={display_c},r={display_r};{b64_path}\x1b\\"
+        code = f"\x1b_Gf=100,a=T,t=f,i={img_id},q=1,c={display_c},r={display_r};{b64_path}\x1b\\"
+
+        # Log the escape sequence for debugging
+        visible_code = code.replace("\x1b", "\\x1b")
+        logging.info(f"Kitty Escape Sequence: {visible_code}")
 
         return ImageRenderable(code, reserve_height, caption=caption)
 
     def on_unmount(self):
-        if self._temp_file and os.path.exists(self._temp_file):
-            try: os.remove(self._temp_file)
-            except: pass
+        # Cleanup any lingering shared memory files
+        if hasattr(self, "_last_shm_path") and self._last_shm_path:
+            try:
+                if os.path.exists(self._last_shm_path):
+                    os.remove(self._last_shm_path)
+            except Exception as e:
+                logging.error(f"Cleanup failed: {e}")

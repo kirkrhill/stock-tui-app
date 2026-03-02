@@ -22,7 +22,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler("stock_tui.log", mode="w"),
-        logging.StreamHandler()
     ]
 )
 for logger_name in ["yfinance", "peewee", "matplotlib", "urllib3", "asyncio"]:
