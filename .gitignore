@@ -36,4 +36,4 @@ dist/
 build/
 *.egg-info/
 
-result-lib/
+result-lib
