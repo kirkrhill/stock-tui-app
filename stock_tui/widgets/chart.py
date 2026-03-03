@@ -107,6 +107,11 @@ class StockChart(Static):
     def set_mode(self, mode):
         self.render_mode = mode
 
+    def set_history_length(self, days: int):
+        """Instantly set history length to a specific number of days."""
+        self._history_length = days
+        self.trigger_render()
+
     def trigger_render(self):
         # We don't clear the console directly here to avoid race conditions with Textual
         # The replacement will happen through the ID 'i=1' in the graphics protocol

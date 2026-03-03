@@ -108,8 +108,8 @@ class StockTuiApp(App):
     }
 
     .history-button {
-        min-width: 5;
-        width: 5;
+        min-width: 6;
+        width: 6;
         height: 3;
         margin: 0 1;
     }
@@ -151,6 +151,10 @@ class StockTuiApp(App):
                     yield Input(placeholder="Enter Ticker (e.g. AAPL, BTC-USD)", id="ticker")
                     yield Button("+", id="history-increase", classes="history-button")
                     yield Button("-", id="history-decrease", classes="history-button")
+                    yield Button("3m", id="timeframe-3m", classes="history-button")
+                    yield Button("6m", id="timeframe-6m", classes="history-button")
+                    yield Button("1y", id="timeframe-1y", classes="history-button")
+                    yield Button("2y", id="timeframe-2y", classes="history-button")
                     yield Label("", id="notifications")
                 yield StockChart(id="chart")
         yield Footer()
@@ -373,6 +377,34 @@ class StockTuiApp(App):
             self.action_increase_history()
         elif event.button.id == "history-decrease":
             self.action_decrease_history()
+        elif event.button.id.startswith("timeframe-"):
+            timeframe = event.button.id.split("-")[1]
+            mapping = {"3m": 63, "6m": 126, "1y": 252, "2y": 504}
+            days = mapping.get(timeframe)
+            if days:
+                self.action_set_timeframe(days, timeframe)
+
+    def action_set_timeframe(self, days: int, label: str):
+        """Instantly set the chart to a specific timeframe (3m, 6m, 1y, 2y)."""
+        try:
+            chart_widget = self.query_one("#chart", StockChart)
+            if chart_widget.chart_data is None:
+                self.notify("Load a stock first to adjust timeframe", severity="warning")
+                return
+
+            # Check if we have enough data
+            if len(chart_widget.chart_data) < days + 10:
+                # Trigger a larger fetch if needed
+                next_p = "5y" if days > 504 else "2y"
+                self.notify(f"Fetching more data for {label} view...")
+                # We update the history length requested so it shows after fetch
+                chart_widget._history_length = days
+                self.fetch_stock_data(chart_widget.symbol, period=next_p)
+            else:
+                chart_widget.set_history_length(days)
+                self.notify(f"Timeframe set to {label} ({days} days)")
+        except Exception as e:
+            logging.error(f"Failed to set timeframe: {e}")
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if " " in event.value:
