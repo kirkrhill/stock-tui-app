@@ -284,6 +284,16 @@ class StockTuiApp(App):
             logging.error(f"Finviz fetch failed: {e}")
 
 
+    def get_period_for_days(self, days: int) -> str:
+        """Calculate the minimum period needed for a given number of trading days."""
+        # 21 trading days per month approx
+        if days <= 126: return "6mo"
+        if days <= 252: return "1y"
+        if days <= 504: return "2y"
+        if days <= 1260: return "5y"
+        if days <= 2520: return "10y"
+        return "max"
+
     async def on_input_submitted(self, message: Input.Submitted):
         symbol = message.value.strip().upper()
         if symbol:
@@ -308,10 +318,16 @@ class StockTuiApp(App):
                 self.query_one("#watchlist", Watchlist).refresh_list()
             except:
                 pass
-            self.fetch_stock_data(symbol)
+
+            # Use current history length to determine period
+            chart_widget = self.query_one("#chart", StockChart)
+            period = self.get_period_for_days(chart_widget._history_length)
+            self.fetch_stock_data(symbol, period=period)
 
     def on_key(self, event) -> None:
         input_widget = self.query_one("#ticker", Input)
+
+        # History navigation (Up/Down) in ticker
         if input_widget.has_focus and event.key in ("up", "down"):
             config = load_config()
             visual_history = list(reversed(config.get("history", [])))
@@ -329,9 +345,29 @@ class StockTuiApp(App):
             new_symbol = visual_history[new_idx]
             input_widget.value = new_symbol
             input_widget.cursor_position = len(new_symbol)
-            self.fetch_stock_data(new_symbol)
+
+            # Use current history length to determine period
+            chart_widget = self.query_one("#chart", StockChart)
+            period = self.get_period_for_days(chart_widget._history_length)
+            self.fetch_stock_data(new_symbol, period=period)
             event.prevent_default()
             event.stop()
+            return
+
+        # Button navigation (Left/Right)
+        BUTTON_IDS = ["history-increase", "history-decrease", "timeframe-3m", "timeframe-6m", "timeframe-1y", "timeframe-2y"]
+        NAV_IDS = ["ticker"] + BUTTON_IDS
+        if event.key in ("left", "right"):
+            focused = self.focused
+            if focused and focused.id in BUTTON_IDS:
+                idx = NAV_IDS.index(focused.id)
+                if event.key == "right":
+                    new_idx = (idx + 1) % len(NAV_IDS)
+                else:
+                    new_idx = (idx - 1) % len(NAV_IDS)
+                self.query_one(f"#{NAV_IDS[new_idx]}").focus()
+                event.prevent_default()
+                event.stop()
 
     def action_increase_history(self):
         """Increase chart history length by 10 days, fetching more if needed."""
@@ -342,12 +378,12 @@ class StockTuiApp(App):
                 at_limit = chart_widget.increase_history_length()
 
                 if at_limit:
-                    next_periods = {"2y": "5y", "5y": "max"}
-                    current = getattr(chart_widget, "current_period", "2y")
-                    next_p = next_periods.get(current)
-
-                    if next_p:
+                    next_p = self.get_period_for_days(chart_widget._history_length + 10)
+                    if next_p != getattr(chart_widget, "current_period", ""):
                         self.notify(f"Fetching more data ({next_p})...")
+                        # We pre-emptively increment _history_length
+                        # so that when update_data is called, it already has the new length.
+                        chart_widget._history_length += 10
                         self.fetch_stock_data(chart_widget.symbol, period=next_p)
                     else:
                         self.notify("Max historical data reached", severity="warning")
@@ -395,7 +431,7 @@ class StockTuiApp(App):
             # Check if we have enough data
             if len(chart_widget.chart_data) < days + 10:
                 # Trigger a larger fetch if needed
-                next_p = "5y" if days > 504 else "2y"
+                next_p = self.get_period_for_days(days)
                 self.notify(f"Fetching more data for {label} view...")
                 # We update the history length requested so it shows after fetch
                 chart_widget._history_length = days

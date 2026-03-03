@@ -90,14 +90,13 @@ class StockChart(Static):
         self.trigger_render()
 
     def update_data(self, df, symbol):
-        # If this is a re-fetch for the same symbol, we don't want to reset history length
-        # unless it's a completely different symbol.
-        if self.symbol != symbol:
-            self._history_length = 60
-        else:
-            # If we're updating for the same symbol (re-fetch), increase the length
-            # to show the newly fetched data immediately.
-            self._history_length += 10
+        # We no longer reset _history_length to 60 for new symbols.
+        # This allows the user to maintain their zoom level across tickers.
+
+        # Ensure the current history length doesn't exceed the new data
+        max_len = len(df)
+        if self._history_length > max_len:
+            self._history_length = max_len
 
         self.chart_data = df
         self.symbol = symbol
