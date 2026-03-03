@@ -16,7 +16,6 @@ from rich.text import Text
 from rich.console import Group
 from textual.widgets import Static
 from textual.reactive import reactive
-from textual.events import Key
 
 class ZeroWidthSegment(Segment):
     """A segment that has a cell length of 0, used for escape codes."""
@@ -75,6 +74,7 @@ class StockChart(Static):
         self._temp_file = None
         self._last_shm = None
         self._history_length = 60  # Default history length
+        self.current_period = "2y" # Initial period
         super().__init__(**kwargs)
 
     def on_mount(self):
@@ -90,6 +90,15 @@ class StockChart(Static):
         self.trigger_render()
 
     def update_data(self, df, symbol):
+        # If this is a re-fetch for the same symbol, we don't want to reset history length
+        # unless it's a completely different symbol.
+        if self.symbol != symbol:
+            self._history_length = 60
+        else:
+            # If we're updating for the same symbol (re-fetch), increase the length
+            # to show the newly fetched data immediately.
+            self._history_length += 10
+
         self.chart_data = df
         self.symbol = symbol
         # Explicitly trigger render
@@ -134,10 +143,15 @@ class StockChart(Static):
             self.update(Text(f"Render failed: {e}"))
 
     def increase_history_length(self):
-        """Increase the history length by 10 days."""
-        if self.chart_data is not None and self._history_length < len(self.chart_data) - 10:
-            self._history_length += 10
-            self.trigger_render()
+        """Increase the history length by 10 days. Returns True if at limit."""
+        if self.chart_data is not None:
+            if self._history_length < len(self.chart_data) - 10:
+                self._history_length += 10
+                self.trigger_render()
+                return False
+            else:
+                return True
+        return False
 
     def decrease_history_length(self):
         """Decrease the history length by 10 days."""

@@ -228,7 +228,7 @@ class StockTuiApp(App):
         self.notify("Switched to Image Mode")
 
     @work(exclusive=True, thread=True)
-    def fetch_stock_data(self, symbol: str):
+    def fetch_stock_data(self, symbol: str, period: str = "2y"):
         chart_widget = self.query_one("#chart", StockChart)
         input_widget = self.query_one("#ticker", Input)
 
@@ -237,10 +237,10 @@ class StockTuiApp(App):
             self.call_from_thread(setattr, input_widget, "value", symbol)
 
         try:
-            self.notify(f"Fetching {symbol}...")
+            self.notify(f"Fetching {symbol} ({period})...")
 
             # Fetch YFinance data
-            df = yf.download(symbol, period="6mo", interval="1d", progress=False)
+            df = yf.download(symbol, period=period, interval="1d", progress=False)
 
             if df.empty:
                 self.notify(f"No data found for '{symbol}'", severity="error")
@@ -253,6 +253,9 @@ class StockTuiApp(App):
             if not all(col in df.columns for col in required):
                 self.notify(f"Invalid data format for {symbol}", severity="error")
                 return
+
+            # Store the current period on the widget for re-fetch logic
+            chart_widget.current_period = period
 
             # Update UI components
             self.call_from_thread(chart_widget.update_data, df, symbol)
@@ -327,12 +330,25 @@ class StockTuiApp(App):
             event.stop()
 
     def action_increase_history(self):
-        """Increase chart history length by 10 days."""
+        """Increase chart history length by 10 days, fetching more if needed."""
         try:
             chart_widget = self.query_one("#chart", StockChart)
             if chart_widget.chart_data is not None:
-                chart_widget.increase_history_length()
-                self.notify(f"History increased to {chart_widget._history_length} days")
+                # Returns True if it reached the data limit
+                at_limit = chart_widget.increase_history_length()
+
+                if at_limit:
+                    next_periods = {"2y": "5y", "5y": "max"}
+                    current = getattr(chart_widget, "current_period", "2y")
+                    next_p = next_periods.get(current)
+
+                    if next_p:
+                        self.notify(f"Fetching more data ({next_p})...")
+                        self.fetch_stock_data(chart_widget.symbol, period=next_p)
+                    else:
+                        self.notify("Max historical data reached", severity="warning")
+                else:
+                    self.notify(f"History increased to {chart_widget._history_length} days")
             else:
                 self.notify("Load a stock first to adjust history", severity="warning")
         except Exception as e:
