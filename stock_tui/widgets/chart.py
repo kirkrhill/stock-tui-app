@@ -16,6 +16,7 @@ from rich.text import Text
 from rich.console import Group
 from textual.widgets import Static
 from textual.reactive import reactive
+from textual.events import Key
 
 class ZeroWidthSegment(Segment):
     """A segment that has a cell length of 0, used for escape codes."""
@@ -73,6 +74,7 @@ class StockChart(Static):
         self.chart_data = None
         self._temp_file = None
         self._last_shm = None
+        self._history_length = 60  # Default history length
         super().__init__(**kwargs)
 
     def on_mount(self):
@@ -131,20 +133,36 @@ class StockChart(Static):
             logging.exception("Render failed")
             self.update(Text(f"Render failed: {e}"))
 
+    def increase_history_length(self):
+        """Increase the history length by 10 days."""
+        if self.chart_data is not None and self._history_length < len(self.chart_data) - 10:
+            self._history_length += 10
+            self.trigger_render()
+
+    def decrease_history_length(self):
+        """Decrease the history length by 10 days."""
+        if self._history_length > 10:
+            self._history_length -= 10
+            self.trigger_render()
+
     def _get_block_ansi(self):
         plt.clear_figure()
         plt.theme("dark")
         # plotext.candlestick expects: dates, {Open, High, Low, Close}
-        subset = self.chart_data.tail(60)
-        dates = subset.index.strftime("%d/%m/%Y").tolist()
+        if self.chart_data is not None:
+            subset = self.chart_data.tail(self._history_length)
+        else:
+            subset = None
+        dates = subset.index.strftime("%d/%m/%Y").tolist() if subset is not None else []
         plt.date_form("d/m/Y")
-        plt.candlestick(dates, {
-            "Open": subset["Open"].tolist(),
-            "High": subset["High"].tolist(),
-            "Low": subset["Low"].tolist(),
-            "Close": subset["Close"].tolist(),
-        })
-        plt.title(f"{self.symbol} - Daily (Last 60 Days)")
+        if subset is not None:
+            plt.candlestick(dates, {
+                "Open": subset["Open"].tolist(),
+                "High": subset["High"].tolist(),
+                "Low": subset["Low"].tolist(),
+                "Close": subset["Close"].tolist(),
+            })
+        plt.title(f"{self.symbol} - Daily ({self._history_length} Days)")
         plt.plotsize(100, self.get_chart_height())
         return plt.build()
 
@@ -152,8 +170,8 @@ class StockChart(Static):
         mc = mpf.make_marketcolors(up="#26a69a", down="#ef5350", edge="inherit", wick="inherit", volume="in")
         s = mpf.make_mpf_style(marketcolors=mc, base_mpf_style="nightclouds", gridstyle=":")
         try:
-            df = self.chart_data
-            if df is None: return Text("No data available.")
+            if self.chart_data is None: return Text("No data available.")
+            df = self.chart_data.tail(self._history_length)
             char_width = self.content_size.width
             char_height = self.content_size.height
             if char_width == 0: char_width = 80
@@ -170,7 +188,7 @@ class StockChart(Static):
             # Log for debugging
             # logging.debug(f"Generated image buffer size: {len(img_buffer.getvalue())}")
 
-            return self._create_image_renderable(img_buffer, caption=f"GRAPHIC: {self.symbol} ({char_width}x{char_height})", width=char_width, height=char_height)
+            return self._create_image_renderable(img_buffer, caption=f"GRAPHIC: {self.symbol} - {self._history_length} Days ({char_width}x{char_height})", width=char_width, height=char_height)
         except Exception as e:
             logging.error(f"Image generation failed: {e}")
             import traceback

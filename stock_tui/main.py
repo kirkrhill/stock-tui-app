@@ -8,7 +8,7 @@ import pandas as pd
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Vertical, Horizontal
-from textual.widgets import Header, Footer, Input, Label, TabbedContent, TabPane
+from textual.widgets import Header, Footer, Input, Label, TabbedContent, TabPane, Button
 from rich.text import Text
 
 from utils import load_config, save_config, fetch_finviz_data
@@ -107,6 +107,13 @@ class StockTuiApp(App):
         width: 40;
     }
 
+    .history-button {
+        min-width: 5;
+        width: 5;
+        height: 3;
+        margin: 0 1;
+    }
+
     #notifications {
         width: 1fr;
         height: 3;
@@ -117,7 +124,7 @@ class StockTuiApp(App):
     }
 
     #top-bar {
-        height: auto;
+        height: 3;
         dock: top;
         background: $surface;
     }
@@ -126,6 +133,8 @@ class StockTuiApp(App):
     BINDINGS = [
         ("ctrl+b", "toggle_block", "Block Mode"),
         ("ctrl+h", "toggle_image", "Image Mode"),
+        ("+", "increase_history", "Increase History"),
+        ("-", "decrease_history", "Decrease History"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -140,6 +149,8 @@ class StockTuiApp(App):
             with Vertical(id="main-content"):
                 with Horizontal(id="top-bar"):
                     yield Input(placeholder="Enter Ticker (e.g. AAPL, BTC-USD)", id="ticker")
+                    yield Button("+", id="history-increase", classes="history-button")
+                    yield Button("-", id="history-decrease", classes="history-button")
                     yield Label("", id="notifications")
                 yield StockChart(id="chart")
         yield Footer()
@@ -314,6 +325,38 @@ class StockTuiApp(App):
             self.fetch_stock_data(new_symbol)
             event.prevent_default()
             event.stop()
+
+    def action_increase_history(self):
+        """Increase chart history length by 10 days."""
+        try:
+            chart_widget = self.query_one("#chart", StockChart)
+            if chart_widget.chart_data is not None:
+                chart_widget.increase_history_length()
+                self.notify(f"History increased to {chart_widget._history_length} days")
+            else:
+                self.notify("Load a stock first to adjust history", severity="warning")
+        except Exception as e:
+            logging.error(f"Failed to increase history: {e}")
+
+    def action_decrease_history(self):
+        """Decrease chart history length by 10 days."""
+        try:
+            chart_widget = self.query_one("#chart", StockChart)
+            if chart_widget.chart_data is not None:
+                chart_widget.decrease_history_length()
+                self.notify(f"History decreased to {chart_widget._history_length} days")
+            else:
+                self.notify("Load a stock first to adjust history", severity="warning")
+        except Exception as e:
+            logging.error(f"Failed to decrease history: {e}")
+
+    def on_button_pressed(self, event) -> None:
+        """Handle button presses for history adjustment."""
+        logging.info(f"Button pressed: {event.button.id}")
+        if event.button.id == "history-increase":
+            self.action_increase_history()
+        elif event.button.id == "history-decrease":
+            self.action_decrease_history()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if " " in event.value:
