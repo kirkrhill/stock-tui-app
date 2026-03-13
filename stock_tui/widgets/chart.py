@@ -72,7 +72,8 @@ class StockChart(Static):
     def __init__(self, **kwargs):
         self.chart_data = None
         self._temp_file = None
-        self._last_shm = None
+        self._last_shm_path = None
+        self._prev_shm_path = None
         self._history_length = 60  # Default history length
         self.current_period = "2y" # Initial period
         super().__init__(**kwargs)
@@ -229,7 +230,16 @@ class StockChart(Static):
             # 3. Base64 encode the full path for t=f
             b64_path = base64.b64encode(shm_path.encode("ascii")).decode("ascii")
 
-            # Record this for cleanup fallback
+            # Cleanup older images to avoid leaks, but keep one back-buffer
+            # to ensure the terminal has finished rendering the previous image.
+            if self._prev_shm_path and os.path.exists(self._prev_shm_path):
+                try:
+                    os.remove(self._prev_shm_path)
+                except:
+                    pass
+
+            # Cycle the paths
+            self._prev_shm_path = self._last_shm_path
             self._last_shm_path = shm_path
         except Exception as e:
             logging.error(f"Failed to write to /dev/shm: {e}")
@@ -253,10 +263,10 @@ class StockChart(Static):
         return ImageRenderable(code, reserve_height, caption=caption)
 
     def on_unmount(self):
-        # Cleanup any lingering shared memory files
-        if hasattr(self, "_last_shm_path") and self._last_shm_path:
-            try:
-                if os.path.exists(self._last_shm_path):
-                    os.remove(self._last_shm_path)
-            except Exception as e:
-                logging.error(f"Cleanup failed: {e}")
+        # Cleanup shared memory files
+        for path in [self._last_shm_path, self._prev_shm_path]:
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception as e:
+                    logging.error(f"Cleanup failed for {path}: {e}")

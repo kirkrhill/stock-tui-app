@@ -1,4 +1,5 @@
 import os
+import glob
 import logging
 import asyncio
 import threading
@@ -179,6 +180,16 @@ class StockTuiApp(App):
                 " - CTRL+H: Switch to Image (High-Res) Mode"
             )
         )
+
+    def on_unmount(self):
+        """Cleanup all shared memory chart files on exit."""
+        files = glob.glob("/dev/shm/stock_tui_chart_*.png")
+        for f in files:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
 
 
     def notify(self, message: str, title: str = "", severity: str = "information", timeout: float = 3.0):
